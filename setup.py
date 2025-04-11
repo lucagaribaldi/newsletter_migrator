@@ -1,5 +1,4 @@
 import os
-```python
 import json
 
 def setup_directories():
@@ -59,4 +58,3 @@ if __name__ == "__main__":
     setup_exported_posts()
     setup_logging_config()
     print("Setup complete!")
-```
