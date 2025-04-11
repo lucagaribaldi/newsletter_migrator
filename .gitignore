@@ -1,38 +1,38 @@
 # File di sistema
-	.DS_Store
-	__pycache__/
-	*.py[cod]
-	*$py.class
-	*.so
-	.Python
-	env/
-	build/
-	develop-eggs/
-	dist/
-	downloads/
-	eggs/
-	.eggs/
-	lib/
-	lib64/
-	parts/
-	sdist/
-	var/
-	*.egg-info/
-	.installed.cfg
-	*.egg
-	
-	# File di credenziali e sensibili
-	cookies.json
-	exported_posts.json
-	.env
-	.secrets
-	
-	# Directory con file convertiti
-	converted/
-	
-	# Cache di Streamlit
-	.streamlit/
-	
-	# Log
-	*.log
-	logs/
+.DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# File di credenziali e sensibili
+cookies.json
+exported_posts.json
+.env
+.secrets
+
+# Directory con file convertiti
+converted/
+
+# Cache di Streamlit
+.streamlit/
+
+# Log
+*.log
+logs/
