@@ -1,3 +1,4 @@
+
 # 📬 Migrazione Newsletter da Brevo a Substack
 
 Web app per trasferire newsletter da Brevo (ex Sendinblue) a Substack con un flusso automatizzato.  
@@ -13,7 +14,7 @@ Web app per trasferire newsletter da Brevo (ex Sendinblue) a Substack con un flu
 - Selezione delle newsletter
 - Conversione HTML → Markdown (con immagini)
 - Pulizia automatica del titolo (es. rimuove "Cronache dal Consiglio n xxx -")
-- Upload cookie  per accesso a Substack
+- Upload cookie `cookies.json` per accesso a Substack
 - Pubblicazione automatica come bozza
 - Archivio locale per evitare duplicati
 - Storico esportazioni
@@ -50,9 +51,9 @@ streamlit run frontend/streamlit_app.py
 ---
 
 ## ⚙️ Note tecniche
-- Serve un file  per Substack (puoi esportarlo con strumenti browser)
+- Serve un file `cookies.json` per Substack (puoi esportarlo con strumenti browser)
 - Chrome + ChromeDriver devono essere installati localmente
-- Le newsletter già migrate vengono memorizzate in 
+- Le newsletter già migrate vengono memorizzate in `exported_posts.json`
 
 ---
 

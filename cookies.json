@@ -1,0 +1,9 @@
+[
+  {
+    "name": "sessionid",
+    "value": "INSERISCI_VALORE_REALE",
+    "domain": ".substack.com",
+    "path": "/",
+    "secure": true
+  }
+]
