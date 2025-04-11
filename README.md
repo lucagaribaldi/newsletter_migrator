@@ -1,62 +1,86 @@
+# 📬 Newsletter Migrator (Brevo → Substack)
 
-# 📬 Migrazione Newsletter da Brevo a Substack
+**Newsletter Migrator** è una web app in Streamlit che ti consente di:
 
-Web app per trasferire newsletter da Brevo (ex Sendinblue) a Substack con un flusso automatizzato.  
-✅ Interfaccia Streamlit  
-✅ Automazione via Selenium  
-✅ Salvataggio come bozza su Substack  
-✅ Gestione duplicati
-
----
-
-## 🚀 Funzionalità
-- Connessione API Brevo
-- Selezione delle newsletter
-- Conversione HTML → Markdown (con immagini)
-- Pulizia automatica del titolo (es. rimuove "Cronache dal Consiglio n xxx -")
-- Upload cookie `cookies.json` per accesso a Substack
-- Pubblicazione automatica come bozza
-- Archivio locale per evitare duplicati
-- Storico esportazioni
+- ✅ Estrarre le newsletter inviate da Brevo
+- ✅ Convertirle in Markdown con immagini su Cloudinary
+- ✅ Visualizzarle e salvarle in locale
+- ✅ Pubblicarle su Substack come bozze (via Selenium)
+- ✅ Tenere traccia delle newsletter già migrate
+- ✅ Automatizzare il caricamento (batch 5-10 newsletter ogni 2h)
 
 ---
 
-## 🛠️ Tecnologie
-- Python
-- Streamlit
-- Selenium
-- BeautifulSoup / html2text
-- JSON, requests
+## 🚀 Funzionalità principali
+
+### 🔄 Estrazione da Brevo
+- Connessione API Brevo con `limit` + `offset`
+- Filtra solo newsletter inviate (`status=sent`)
+- Ordinamento cronologico
+- Selettore newsletter da migrare
+- Titolo pulito da `Cronache dal Consiglio n° xxx -`
+
+### 📄 Conversione
+- HTML → Markdown
+- Upload immagini su Cloudinary
+- Salvataggio file `.md` in `converted/`
+
+### 📤 Pubblicazione su Substack
+- Login con `cookies.json`
+- Inserimento automatico di titolo e contenuto
+- Salvataggio come **bozza**
+- Script: `app/substack_bot.py`
+
+### 🕓 Batch automatico
+- Script in preparazione per invio ogni 2 ore di 5–10 newsletter
 
 ---
 
-## 🧪 Come si usa
+## 📁 Struttura del progetto
 
-```bash
-# Clona il progetto
-git clone https://github.com/lucagaribaldi/newsletter_migrator.git
-cd newsletter_migrator
-
-# Crea ambiente virtuale
-python3 -m venv venv
-source venv/bin/activate
-
-# Installa le dipendenze
-pip install -r requirements.txt
-
-# Avvia la web app
-streamlit run frontend/streamlit_app.py
+```
+newsletter_migrator/
+├── Home.py
+├── pages/
+│   └── Migrazione.py
+├── converted/
+├── exported_posts.json
+├── cookies.json
+├── app/
+│   └── substack_bot.py
+├── requirements.txt
+├── .replit
+└── README.md
 ```
 
 ---
 
-## ⚙️ Note tecniche
-- Serve un file `cookies.json` per Substack (puoi esportarlo con strumenti browser)
-- Chrome + ChromeDriver devono essere installati localmente
-- Le newsletter già migrate vengono memorizzate in `exported_posts.json`
+## ▶️ Avvio su Replit
+
+1. Inserisci le API nella sidebar (o come variabili ambiente):
+   - `BREVO_API_KEY`
+   - `CLOUDINARY_CLOUD_NAME`, `API_KEY`, `API_SECRET`
+
+2. Carica i file:
+   - `cookies.json` (Substack)
+   - `exported_posts.json` (opzionale)
+
+3. Premi **Run** su Replit per avviare l'app (`streamlit run Home.py`)
 
 ---
 
-## 📄 Documenti
-- 📄 `PDR_Migrazione_Newsletter.txt`: Documento progettuale
-- 📄 `REPLIT_SETUP.txt`: Istruzioni per esecuzione su Replit
+## 📦 Requisiti
+```
+streamlit
+cloudinary
+requests
+beautifulsoup4
+html2text
+markdown2
+selenium
+```
+
+---
+
+## ✍️ Autore
+Realizzato con ❤️ da [@lucagaribaldi](https://github.com/lucagaribaldi)
