@@ -1,0 +1,15 @@
+language = "python3"
+	entrypoint = "Home.py"
+	run = "streamlit run Home.py --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false"
+	
+	[nix]
+	channel = "stable-22_11"
+	
+	[packager]
+	ignoredPackages = ["node_modules", ".git"]
+	
+	[env]
+	PYTHONPATH = "${REPL_HOME}"
+	
+	[debugger]
+	support = true
