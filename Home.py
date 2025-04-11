@@ -1,6 +1,5 @@
 
 import streamlit as st
-```python
 import os
 import logging
 import json
