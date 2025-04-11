@@ -1,5 +1,9 @@
-streamlit
-selenium
-html2text
-beautifulsoup4
-requests
+streamlit==1.27.0
+	cloudinary==1.33.0
+	requests==2.31.0
+	beautifulsoup4==4.12.2
+	html2text==2020.1.16
+	markdown2==2.4.10
+	selenium==4.12.0
+	webdriver-manager==4.0.0
+	python-dotenv==1.0.0
