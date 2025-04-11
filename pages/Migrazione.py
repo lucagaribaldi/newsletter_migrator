@@ -1,139 +1,136 @@
 
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import html2text
 import os
 import json
-import subprocess
-import re
+import requests
+import cloudinary
+import cloudinary.uploader
 from datetime import datetime
 
 st.set_page_config(page_title="Migrazione Newsletter", layout="wide")
-st.title("Migrazione Newsletter da Brevo a Substack")
+st.title("Migrazione da Brevo a Substack")
 
-ARCHIVE_FILE = "exported_posts.json"
+# === Upload API Key e file ===
+st.header("🔐 Credenziali")
 
-def load_exported_ids():
-    if os.path.exists(ARCHIVE_FILE):
-        with open(ARCHIVE_FILE, "r") as f:
-            return set(json.load(f))
-    return set()
+brevo_api_key = st.text_input("Inserisci la tua API Key Brevo", type="password")
+cloud_name = st.text_input("Cloudinary Cloud Name")
+cloud_api_key = st.text_input("Cloudinary API Key")
+cloud_api_secret = st.text_input("Cloudinary API Secret", type="password")
 
-def save_exported_ids(ids):
-    with open(ARCHIVE_FILE, "w") as f:
-        json.dump(list(ids), f)
+cookies_file = st.file_uploader("📂 Carica cookies.json", type="json")
+exported_file = st.file_uploader("📂 Carica exported_posts.json (opzionale)", type="json")
 
-api_key = st.text_input("Inserisci la tua API Key Brevo", type="password")
+if cookies_file:
+    with open("cookies.json", "wb") as f:
+        f.write(cookies_file.getbuffer())
+    st.success("cookies.json caricato")
 
-st.subheader("Upload file cookies.json per Substack")
-uploaded_cookies = st.file_uploader("Carica il file cookies.json", type="json")
-cookie_file_path = None
-if uploaded_cookies:
-    cookie_file_path = os.path.join("temp_cookies.json")
-    with open(cookie_file_path, "wb") as f:
-        f.write(uploaded_cookies.getbuffer())
-    st.success("File cookies.json caricato correttamente.")
+exported_ids = set()
+if exported_file:
+    with open("exported_posts.json", "wb") as f:
+        f.write(exported_file.getbuffer())
+    try:
+        exported_ids = set(json.load(exported_file))
+        st.success(f"{len(exported_ids)} newsletter migrate trovate.")
+    except:
+        st.error("Errore nella lettura di exported_posts.json")
 
+# === Connessione API Brevo ===
 def get_sent_campaigns(api_key):
-    headers = {
-        "accept": "application/json",
-        "api-key": api_key
-    }
+    headers = {"accept": "application/json", "api-key": api_key}
+    params = {"type": "classic", "status": "sent", "limit": 100}
     url = "https://api.brevo.com/v3/emailCampaigns"
-    params = {
-        "type": "classic",
-        "status": "sent",
-        "limit": 50
-    }
-    response = requests.get(url, headers=headers, params=params)
-    if response.status_code == 200:
-        return response.json()["campaigns"]
-    else:
-        st.error(f"Errore nella chiamata API: {response.status_code}")
-        return []
+    r = requests.get(url, headers=headers, params=params)
+    if r.status_code == 200:
+        return sorted(r.json().get("campaigns", []), key=lambda x: x["sentDate"], reverse=True)
+    return []
 
-def get_campaign_content(api_key, campaign_id):
-    headers = {
-        "accept": "application/json",
-        "api-key": api_key
-    }
-    url = f"https://api.brevo.com/v3/emailCampaigns/{campaign_id}/content"
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        st.error(f"Errore nel recupero contenuto: {response.status_code}")
-        return {}
-
-def pulisci_titolo(titolo):
-    return re.sub(r'^Cronache dal Consiglio n \d+ -\s*', '', titolo)
-
-def convert_html_to_markdown(html_content):
-    soup = BeautifulSoup(html_content, "html.parser")
-    for img in soup.find_all("img"):
-        src = img.get("src", "")
-        markdown_img = f"![]({src})"
-        img.insert_after(soup.new_string("\n" + markdown_img + "\n"))
-    html_with_images = str(soup)
-    converter = html2text.HTML2Text()
-    converter.ignore_links = False
-    converter.ignore_images = False
-    converter.body_width = 0
-    return converter.handle(html_with_images)
-
-# INTERFACCIA DI MIGRAZIONE
-if api_key:
-    st.subheader("1. Seleziona le newsletter da esportare")
-    campaigns = get_sent_campaigns(api_key)
-    exported_ids = load_exported_ids()
-    selected_campaigns = []
+# === Selettore campagne ===
+selected_campaigns = []
+if brevo_api_key and st.button("🔍 Estrai campagne da Brevo"):
+    with st.spinner("Caricamento campagne..."):
+        campaigns = get_sent_campaigns(brevo_api_key)
+    st.success(f"Trovate {len(campaigns)} campagne.")
     for campaign in campaigns:
-        already_exported = campaign['id'] in exported_ids
-        label = f"{campaign['subject']} - {campaign['sentDate']}"
-        if already_exported:
-            st.checkbox(f"{label} (GIÀ ESPORTATA)", value=True, disabled=True, key=campaign['id'])
+        label = f"{campaign['subject']} – {campaign['sentDate']}"
+        if campaign['id'] in exported_ids:
+            st.checkbox(label, value=True, disabled=True)
         else:
-            checkbox = st.checkbox(label, key=campaign['id'])
-            if checkbox:
+            if st.checkbox(label, key=campaign['id']):
                 selected_campaigns.append(campaign)
 
-    if selected_campaigns:
-        st.subheader("2. Conversione in Markdown")
-        converted_campaigns = []
-        for campaign in selected_campaigns:
-            content_data = get_campaign_content(api_key, campaign['id'])
-            if content_data and "htmlContent" in content_data:
-                cleaned_title = pulisci_titolo(campaign['subject'])
-                markdown = convert_html_to_markdown(content_data["htmlContent"])
-                default_date = datetime.strptime(campaign['sentDate'], "%Y-%m-%dT%H:%M:%S.%f%z").date()
-                with st.expander(f"Anteprima: {cleaned_title}"):
-                    st.markdown(markdown)
-                    publish_date = st.date_input(f"Data per '{cleaned_title}'", value=default_date, key=f"date_{campaign['id']}")
-                converted_campaigns.append({
-                    "id": campaign['id'],
-                    "title": cleaned_title,
-                    "content": markdown,
-                    "date": str(publish_date)
-                })
+# === Setup Cloudinary se presenti credenziali ===
+if cloud_name and cloud_api_key and cloud_api_secret:
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=cloud_api_key,
+        api_secret=cloud_api_secret
+    )
+    st.success("✅ Connessione a Cloudinary configurata")
 
-        if cookie_file_path and st.button("3. Salva come bozza su Substack"):
-            for post in converted_campaigns:
-                script = f"""
-from app.substack_bot import setup_driver, load_cookies, create_new_post
+# === Visualizzazione finale ===
+if selected_campaigns:
+    st.write("✅ Campagne selezionate per la migrazione:")
+    for c in selected_campaigns:
+        st.markdown(f"- {c['subject']} ({c['sentDate']})")
 
-driver = setup_driver()
-try:
-    load_cookies(driver, '{cookie_file_path}')
-    create_new_post(driver, "{post['title']}", """{post['content'].replace('"', '\"')}""", "{post['date']}", save_as_draft=True)
-finally:
-    driver.quit()
-"""
-                with open("run_substack_bot.py", "w") as f:
-                    f.write(script)
-                subprocess.run(["python3", "run_substack_bot.py"])
-                exported_ids.add(post["id"])
-            save_exported_ids(exported_ids)
-            st.success("Bozze salvate e archivio aggiornato!")
-        elif not cookie_file_path:
-            st.warning("Carica prima il file cookies.json per procedere.")
+
+# === Pulsante di conversione ===
+if selected_campaigns and st.button("⚙️ Converti e prepara per Substack"):
+    st.subheader("📄 Conversione in Markdown e caricamento immagini")
+    converted = []
+    for i, campaign in enumerate(selected_campaigns):
+        with st.spinner(f"Elaborazione: {campaign['subject']}..."):
+            cid = campaign['id']
+            title = campaign['subject']
+            clean_title = title
+            if "Cronache dal Consiglio" in title:
+                import re
+                clean_title = re.sub(r"^Cronache dal Consiglio n.*?-\s*", "", title)
+
+            # Recupera contenuto HTML della campagna
+            content_url = f"https://api.brevo.com/v3/emailCampaigns/{cid}/content"
+            headers = {"accept": "application/json", "api-key": brevo_api_key}
+            res = requests.get(content_url, headers=headers)
+            html = res.json().get("htmlContent", "")
+
+            # Trova e carica immagini su Cloudinary
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            for img in soup.find_all("img"):
+                img_url = img.get("src", "")
+                if cloud_name and cloud_api_key and cloud_api_secret:
+                    uploaded = cloudinary.uploader.upload(img_url)
+                    new_url = uploaded.get("secure_url", img_url)
+                    img["src"] = new_url
+
+            # Converti in markdown
+            import html2text
+            h = html2text.HTML2Text()
+            h.ignore_links = False
+            h.body_width = 0
+            markdown = h.handle(str(soup))
+
+            # Salva file .md
+            os.makedirs("converted", exist_ok=True)
+            filename = f"converted/newsletter_{cid}.md"
+            with open(filename, "w") as out:
+                out.write(f"# {clean_title}\n\n{markdown}")
+            converted.append(cid)
+            st.success(f"✅ {clean_title} convertita e salvata")
+
+    # Aggiorna exported_posts.json
+    exported_path = "exported_posts.json"
+    try:
+        if os.path.exists(exported_path):
+            with open(exported_path, "r") as f:
+                current = set(json.load(f))
+        else:
+            current = set()
+        current.update(converted)
+        with open(exported_path, "w") as f:
+            json.dump(list(current), f, indent=2)
+        st.success(f"🎉 Migrazione completata. Aggiornato exported_posts.json con {len(converted)} newsletter.")
+    except Exception as e:
+        st.error(f"Errore nel salvataggio dell'archivio: {e}")

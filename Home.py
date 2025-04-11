@@ -12,6 +12,7 @@ Questa applicazione consente di:
 - Selezionare e convertire newsletter in Markdown
 - Caricarle su Substack come bozze
 - Evitare duplicati grazie all'archivio locale
+- Caricare immagini su Cloudinary per generare link CDN
 
 ---
 
@@ -20,30 +21,29 @@ Questa applicazione consente di:
 Assicurati di avere:
 
 1. API Key di Brevo
-2. File `cookies.json` con i cookie di sessione di Substack
-3. File `exported_posts.json` per salvare le newsletter già migrate (verrà creato se non esiste)
+2. Cloudinary credentials (cloud name, API key, secret)
+3. File `cookies.json` per autenticazione su Substack
+4. File `exported_posts.json` per tenere traccia delle newsletter migrate
 
 ---
 
-## Stato dei file necessari
+## Stato dei file
+
 """)
 
-# Controllo cookies.json
 if os.path.exists("cookies.json"):
-    st.success("`cookies.json` trovato")
+    st.success("✅ File cookies.json caricato")
 else:
-    st.warning("`cookies.json` mancante — caricalo nella root")
+    st.warning("⚠️ File cookies.json non trovato")
 
-# Controllo exported_posts.json
 if os.path.exists("exported_posts.json"):
     try:
         with open("exported_posts.json", "r") as f:
             exported = json.load(f)
-        st.success(f"`exported_posts.json` trovato – {len(exported)} newsletter esportate")
-    except Exception as e:
-        st.error(f"Errore nel file `exported_posts.json`: {e}")
+        st.success(f"✅ File exported_posts.json trovato ({len(exported)} newsletter migrate)")
+    except:
+        st.error("❌ Errore nel file exported_posts.json")
 else:
-    st.warning("`exported_posts.json` non trovato – sarà creato al primo utilizzo")
+    st.warning("⚠️ File exported_posts.json non trovato")
 
-st.markdown("---")
-st.info("Utilizza il menu laterale per accedere alle funzionalità dell'app.")
+st.info("Usa il menu a sinistra per navigare tra le funzioni.")
