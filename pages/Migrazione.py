@@ -1,343 +1,266 @@
 import streamlit as st
 import os
 import json
-import time
 import logging
-import requests
-import subprocess
+import pandas as pd
 from datetime import datetime
+import requests
+from dotenv import load_dotenv
+import time
 import re
-import sys
-
-# Aggiungi il path della cartella padre per importare i moduli custom
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from app.utils import process_html_content, retry_function
-from app.substack_bot import publish_post_to_substack
 
+# Configurazione logging
 logger = logging.getLogger(__name__)
 
-# Configurazione pagina
-st.set_page_config(
-    page_title="Migrazione Newsletter",
-    page_icon="🚀",
-    layout="wide"
-)
+# Carica variabili d'ambiente
+load_dotenv()
+
+st.set_page_config(page_title="Migrazione Newsletter", layout="wide")
 
 # Titolo
-st.title("🚀 Migrazione Newsletter")
-st.markdown("Estrazione, conversione e migrazione delle newsletter da Brevo a Substack")
+st.title("Migrazione Newsletter")
 
-# Verifica che le credenziali siano configurate
-if (not st.session_state.get('brevo_api_key') or 
-    not st.session_state.get('cloudinary_cloud_name') or 
-    not st.session_state.get('cloudinary_api_key') or 
-    not st.session_state.get('cloudinary_api_secret')):
-    
-    st.error("⚠️ Devi prima configurare le API nella pagina principale!")
-    st.stop()
+# Sidebar per la configurazione
+st.sidebar.header("Configurazione")
 
-# Funzione per chiamare l'API di Brevo con retry
-@st.cache_data(ttl=3600)  # Cache per un'ora
-def fetch_campaigns_with_retry(api_key, offset=0, limit=100):
-    """Fetches campaigns from Brevo API with retry mechanism."""
+# API Keys
+brevo_api_key = st.sidebar.text_input("Brevo API Key", value=os.getenv("BREVO_API_KEY", ""), type="password")
+brevo_list_id = st.sidebar.text_input("Brevo List ID", value=os.getenv("BREVO_LIST_ID", ""))
+newsletter_name = st.sidebar.text_input("Nome Newsletter", value=os.getenv("NEWSLETTER_NAME", ""))
+
+# Salva le API keys come variabili d'ambiente
+if brevo_api_key:
+    os.environ["BREVO_API_KEY"] = brevo_api_key
+if brevo_list_id:
+    os.environ["BREVO_LIST_ID"] = brevo_list_id
+if newsletter_name:
+    os.environ["NEWSLETTER_NAME"] = newsletter_name
+
+# Funzione per ottenere le campagne da Brevo
+@st.cache_data(ttl=600)
+def get_brevo_campaigns():
+    logger.info("Ottengo le campagne da Brevo")
+    url = "https://api.brevo.com/v3/emailCampaigns"
     headers = {
-        'accept': 'application/json',
-        'api-key': api_key
+        "Accept": "application/json",
+        "api-key": os.getenv("BREVO_API_KEY")
     }
-    url = f'https://api.brevo.com/v3/emailCampaigns?status=sent&limit={limit}&offset={offset}'
     
-    def _fetch():
-        response = requests.get(url, headers=headers)
+    params = {
+        "status": "sent",
+        "limit": 500,
+        "offset": 0
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
-        return response.json()
-    
-    return retry_function(_fetch, max_retries=3, base_delay=2)
-
-# Funzione per estrarre tutte le campagne con paginazione
-def fetch_all_campaigns(api_key):
-    """Fetches all campaigns using pagination."""
-    all_campaigns = []
-    offset = 0
-    limit = 100  # Massimo consentito dall'API
-    
-    with st.spinner("Estrazione newsletter da Brevo in corso..."):
-        progress_bar = st.progress(0)
-        total_fetched = 0
+        campaigns = response.json().get("campaigns", [])
         
-        while True:
-            try:
-                response = fetch_campaigns_with_retry(api_key, offset, limit)
-                campaigns = response.get('campaigns', [])
-                
-                if not campaigns:
-                    break
-                    
-                all_campaigns.extend(campaigns)
-                total_fetched += len(campaigns)
-                
-                # Aggiorna la progress bar (approssimazione del progresso)
-                progress_value = min(total_fetched / (total_fetched + limit), 1.0)
-                progress_bar.progress(progress_value)
-                
-                # Se riceviamo meno del limit, siamo all'ultima pagina
-                if len(campaigns) < limit:
-                    break
-                    
-                offset += limit
-                time.sleep(1)  # Evita rate limiting
-                
-            except Exception as e:
-                st.error(f"Errore durante l'estrazione delle newsletter: {str(e)}")
-                logger.error(f"Errore API Brevo: {str(e)}")
-                break
-    
-    return all_campaigns
+        # Filtra le campagne per nome newsletter se specificato
+        if os.getenv("NEWSLETTER_NAME"):
+            campaigns = [c for c in campaigns if os.getenv("NEWSLETTER_NAME").lower() in c.get("name", "").lower()]
+        
+        return campaigns
+    except Exception as e:
+        logger.error(f"Errore nel recupero delle campagne: {e}")
+        st.error(f"Errore nel recupero delle campagne: {e}")
+        return []
 
-# Funzione per ottenere il contenuto di una campagna
-@st.cache_data(ttl=24*3600)  # Cache per un giorno
-def get_campaign_content(api_key, campaign_id):
-    """Gets the HTML content of a specific campaign."""
+# Funzione per ottenere i dettagli di una campagna
+def get_campaign_content(campaign_id):
+    logger.info(f"Ottengo i dettagli della campagna {campaign_id}")
+    url = f"https://api.brevo.com/v3/emailCampaigns/{campaign_id}"
     headers = {
-        'accept': 'application/json',
-        'api-key': api_key
+        "Accept": "application/json",
+        "api-key": os.getenv("BREVO_API_KEY")
     }
-    url = f'https://api.brevo.com/v3/emailCampaigns/{campaign_id}'
     
-    def _fetch():
+    try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.json()
-    
-    return retry_function(_fetch, max_retries=3, base_delay=2)
+    except Exception as e:
+        logger.error(f"Errore nel recupero dei dettagli della campagna {campaign_id}: {e}")
+        st.error(f"Errore nel recupero dei dettagli della campagna {campaign_id}: {e}")
+        return None
 
-# Funzione per controllare se una newsletter è già stata esportata
-def is_already_exported(campaign_id):
-    """Checks if a campaign has already been exported."""
-    if os.path.exists('exported_posts.json'):
-        with open('exported_posts.json', 'r') as f:
-            exported = json.load(f)
-            return campaign_id in [post.get('id') for post in exported]
+# Funzione per esportare una campagna a Substack (simulazione)
+def export_to_substack(title, content, date):
+    # Qui andrà la logica di esportazione a Substack
+    # Per ora è solo una simulazione
+    logger.info(f"Esportazione a Substack: {title}")
+    
+    # Salva il post in un file JSON per tenere traccia
+    try:
+        # Carica i post già esportati
+        if os.path.exists("exported_posts.json"):
+            with open("exported_posts.json", "r") as f:
+                exported_posts = json.load(f)
+        else:
+            exported_posts = []
+        
+        # Aggiungi il nuovo post
+        exported_posts.append({
+            "title": title,
+            "date": date,
+            "exported_at": datetime.now().isoformat()
+        })
+        
+        # Salva il file aggiornato
+        with open("exported_posts.json", "w") as f:
+            json.dump(exported_posts, f, indent=2)
+        
+        # Salva anche il contenuto HTML in un file separato
+        clean_title = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '-').lower()
+        os.makedirs("converted", exist_ok=True)
+        with open(f"converted/{clean_title}.html", "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        return True
+    except Exception as e:
+        logger.error(f"Errore nell'esportazione a Substack: {e}")
+        st.error(f"Errore nell'esportazione a Substack: {e}")
+        return False
+
+# Funzione per verificare se una campagna è già stata esportata
+def is_already_exported(title, date):
+    if os.path.exists("exported_posts.json"):
+        try:
+            with open("exported_posts.json", "r") as f:
+                exported_posts = json.load(f)
+            
+            for post in exported_posts:
+                if post.get("title") == title and post.get("date") == date:
+                    return True
+        except Exception as e:
+            logger.error(f"Errore nella verifica dei post esportati: {e}")
+    
     return False
 
-# Funzione per aggiungere una newsletter all'elenco delle esportate
-def mark_as_exported(campaign_id, title):
-    """Marks a campaign as exported."""
-    exported = []
-    if os.path.exists('exported_posts.json'):
-        with open('exported_posts.json', 'r') as f:
-            exported = json.load(f)
-    
-    # Aggiungi il nuovo post
-    exported.append({
-        'id': campaign_id,
-        'title': title,
-        'exported_date': datetime.now().isoformat()
-    })
-    
-    # Salva il file aggiornato
-    with open('exported_posts.json', 'w') as f:
-        json.dump(exported, f, indent=4)
-    
-    logger.info(f"Newsletter '{title}' (ID: {campaign_id}) marcata come esportata")
-
-# Funzione per pulire il titolo
-def clean_title(title):
-    """Removes prefix like 'Cronache dal Consiglio n° xxx -' from title."""
-    # Rimuovi prefissi specifici
-    title = re.sub(r'^Cronache\s+dal\s+Consiglio\s+n°\s*\d+\s*-\s*', '', title)
-    # Rimuovi spazi extra
-    title = re.sub(r'\s+', ' ', title).strip()
-    return title
-
-# Main app
-if 'campaigns' not in st.session_state:
-    # Carica le campagne
-    campaigns = fetch_all_campaigns(st.session_state.brevo_api_key)
-    
-    # Filtra solo le newsletter che non sono già state esportate
-    filtered_campaigns = []
-    for campaign in campaigns:
-        if not is_already_exported(campaign['id']):
-            # Pulizia del titolo
-            campaign['cleanTitle'] = clean_title(campaign['name'])
-            filtered_campaigns.append(campaign)
-    
-    st.session_state.campaigns = filtered_campaigns
-    st.session_state.all_campaigns_count = len(campaigns)
-
-# Mostra contatori
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Newsletter totali", st.session_state.all_campaigns_count)
-with col2:
-    st.metric("Newsletter da migrare", len(st.session_state.campaigns))
-
-# Se non ci sono newsletter da migrare
-if not st.session_state.campaigns:
-    st.success("🎉 Tutte le newsletter sono già state migrate!")
-    
-    # Opzione per forzare il recupero di tutte le newsletter
-    if st.button("Mostra tutte le newsletter (incluse quelle già migrate)"):
-        st.session_state.pop('campaigns', None)
-        st.experimental_rerun()
-    
-    st.stop()
-
-# Selezione delle newsletter da migrare
-st.subheader("Seleziona le newsletter da migrare")
-
-# Ordinamento delle campagne per data più recente
-sorted_campaigns = sorted(
-    st.session_state.campaigns,
-    key=lambda x: datetime.strptime(x['sentDate'], '%Y-%m-%d %H:%M:%S'),
-    reverse=True
-)
-
-# Mostra le campagne con la data formattata
-campaign_options = {}
-for campaign in sorted_campaigns:
-    # Formatta la data
-    sent_date = datetime.strptime(campaign['sentDate'], '%Y-%m-%d %H:%M:%S')
-    formatted_date = sent_date.strftime('%d/%m/%Y')
-    
-    # Crea l'etichetta
-    label = f"{formatted_date} - {campaign['cleanTitle']}"
-    campaign_options[label] = campaign
-
-# Dropdown per limitare le opzioni mostrate
-num_to_show = st.selectbox(
-    "Mostra newsletter:",
-    options=[10, 20, 50, 100, "Tutte"],
-    index=0
-)
-
-if num_to_show != "Tutte":
-    campaign_labels = list(campaign_options.keys())[:num_to_show]
+# Main
+if not brevo_api_key:
+    st.warning("Inserisci la tua Brevo API Key nella sidebar")
 else:
-    campaign_labels = list(campaign_options.keys())
-
-# Multi-select per scegliere le newsletter
-selected_labels = st.multiselect(
-    "Scegli le newsletter da migrare:",
-    options=campaign_labels
-)
-
-selected_campaigns = [campaign_options[label] for label in selected_labels]
-
-# Opzioni aggiuntive
-st.subheader("Opzioni di migrazione")
-col1, col2 = st.columns(2)
-
-with col1:
-    convert_only = st.checkbox("Solo conversione (nessun upload su Substack)", value=False)
-
-with col2:
-    cloudinary_folder = st.text_input(
-        "Cartella Cloudinary per le immagini",
-        value="newsletter_migrator",
-        help="Nome della cartella su Cloudinary dove verranno caricate le immagini"
-    )
-
-# Pulsante per avviare la migrazione
-if st.button("Avvia migrazione", disabled=len(selected_campaigns) == 0):
-    if not selected_campaigns:
-        st.warning("Nessuna newsletter selezionata")
-    else:
-        # Configura Cloudinary
-        cloudinary_config = {
-            "cloud_name": st.session_state.cloudinary_cloud_name,
-            "api_key": st.session_state.cloudinary_api_key,
-            "api_secret": st.session_state.cloudinary_api_secret,
-            "folder": cloudinary_folder
-        }
-        
-        # Crea la directory converted se non esiste
-        if not os.path.exists("converted"):
-            os.makedirs("converted")
-        
-        # Progress bar
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for i, campaign in enumerate(selected_campaigns):
-            campaign_id = campaign['id']
-            title = campaign['cleanTitle']
-            
-            # Aggiorna stato
-            status_text.text(f"Elaborazione {i+1}/{len(selected_campaigns)}: {title}")
-            progress_value = i / len(selected_campaigns)
-            progress_bar.progress(progress_value)
-            
-            try:
-                # Ottieni contenuto HTML
-                campaign_details = get_campaign_content(st.session_state.brevo_api_key, campaign_id)
-                html_content = campaign_details.get('htmlContent', '')
-                
-                if not html_content:
-                    st.error(f"Nessun contenuto HTML trovato per '{title}'")
-                    continue
-                
-                # Converti in Markdown
-                markdown_content = process_html_content(html_content, cloudinary_config, title)
-                
-                # Salva localmente
-                file_path = os.path.join("converted", f"{campaign_id}.md")
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(markdown_content)
-                
-                logger.info(f"Newsletter '{title}' convertita e salvata in {file_path}")
-                
-                # Upload su Substack (se richiesto)
-                if not convert_only:
-                    if not os.path.exists("cookies.json"):
-                        st.error("File cookies.json non trovato. Impossibile procedere con l'upload su Substack.")
-                        break
-                    
-                    success = publish_post_to_substack(title, markdown_content)
-                    
-                    if success:
-                        st.success(f"✅ '{title}' caricato su Substack come bozza")
-                    else:
-                        st.error(f"❌ Errore nel caricamento di '{title}' su Substack")
-                        continue
-                
-                # Marca come esportato
-                mark_as_exported(campaign_id, title)
-                
-            except Exception as e:
-                error_msg = f"Errore durante l'elaborazione di '{title}': {str(e)}"
-                st.error(error_msg)
-                logger.error(error_msg)
-        
-        # Aggiorna la progress bar al 100%
-        progress_bar.progress(1.0)
-        status_text.text("Processo completato!")
-        
-        # Aggiorna la pagina dopo 3 secondi
-        time.sleep(3)
-        st.experimental_rerun()
-
-# Script per invio batch
-st.subheader("Invio batch programmato")
-st.markdown("""
-Puoi configurare un invio batch programmato delle newsletter per inviarle a intervalli regolari su Substack.
-""")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    batch_size = st.number_input("Numero di newsletter per batch", min_value=1, max_value=20, value=5)
-
-with col2:
-    interval_hours = st.number_input("Intervallo tra i batch (ore)", min_value=1, value=2)
-
-if st.button("Configurare invio batch"):
-    st.info("Funzionalità in fase di sviluppo. Sarà disponibile nella prossima versione.")
+    # Ottieni le campagne
+    with st.spinner("Caricamento campagne..."):
+        campaigns = get_brevo_campaigns()
     
-    # Qui andrebbe il codice per configurare il cron job o lo scheduler di Replit
-    # In un file separato che verrà eseguito periodicamente
-
-# Footer
-st.markdown("---")
-st.markdown("Developed with ❤️ | [GitHub Repository](https://github.com/lucagaribaldi/newsletter_migrator)")
+    if not campaigns:
+        st.info("Nessuna campagna trovata o errore nel recupero delle campagne")
+    else:
+        # Mostra le campagne in una tabella
+        st.header(f"Campagne trovate: {len(campaigns)}")
+        
+        # Prepara i dati per la tabella
+        campaign_data = []
+        for c in campaigns:
+            # Converti la data in un formato più leggibile
+            sent_date = c.get("sentDate", "")
+            if sent_date:
+                # Gestisci diversi formati di data
+                try:
+                    if 'T' in sent_date:
+                        sent_date_obj = datetime.fromisoformat(sent_date.replace('Z', '+00:00'))
+                    else:
+                        sent_date_obj = datetime.strptime(sent_date, '%Y-%m-%d %H:%M:%S')
+                    sent_date_formatted = sent_date_obj.strftime("%d/%m/%Y %H:%M")
+                except Exception as e:
+                    logger.warning(f"Errore nella conversione della data {sent_date}: {e}")
+                    sent_date_formatted = sent_date
+            else:
+                sent_date_formatted = "N/D"
+            
+            # Verifica se è già esportata
+            is_exported = is_already_exported(c.get("name"), sent_date)
+            
+            campaign_data.append({
+                "ID": c.get("id"),
+                "Nome": c.get("name"),
+                "Data invio": sent_date_formatted,
+                "Oggetto": c.get("subject", ""),
+                "Già esportata": "✓" if is_exported else "",
+                "sentDate": sent_date  # Campo nascosto per ordinamento
+            })
+        
+        # Ordinamento delle campagne per data di invio (più recenti prima)
+        try:
+            sorted_campaigns = sorted(
+                campaign_data,
+                key=lambda x: datetime.fromisoformat(x['sentDate'].replace('Z', '+00:00')) if 'T' in x['sentDate'] else datetime.strptime(x['sentDate'], '%Y-%m-%d %H:%M:%S'),
+                reverse=True
+            )
+        except Exception as e:
+            logger.warning(f"Errore nell'ordinamento delle campagne: {e}")
+            sorted_campaigns = campaign_data
+        
+        # Crea una tabella con Pandas
+        df = pd.DataFrame(sorted_campaigns)
+        if "sentDate" in df.columns:
+            df = df.drop(columns=["sentDate"])  # Rimuovi la colonna nascosta
+        
+        st.dataframe(df)
+        
+        # Sezione per esportare una campagna specifica
+        st.header("Esporta una campagna")
+        
+        campaign_ids = [c.get("ID") for c in sorted_campaigns]
+        campaign_names = [c.get("Nome") for c in sorted_campaigns]
+        
+        # Crea un dizionario di mappatura ID -> Nome
+        campaign_map = {str(id): name for id, name in zip(campaign_ids, campaign_names)}
+        
+        # Selettore per la campagna
+        selected_campaign_id = st.selectbox("Seleziona una campagna", options=[str(id) for id in campaign_ids], format_func=lambda x: f"{campaign_map.get(x)} (ID: {x})")
+        
+        if st.button("Carica contenuto"):
+            if selected_campaign_id:
+                with st.spinner("Caricamento contenuto..."):
+                    campaign_details = get_campaign_content(selected_campaign_id)
+                    
+                    if campaign_details:
+                        # Estrai il contenuto HTML
+                        html_content = campaign_details.get("htmlContent", "")
+                        subject = campaign_details.get("subject", "")
+                        sent_date = campaign_details.get("sentDate", "")
+                        
+                        # Processa il contenuto HTML per renderlo compatibile con Substack
+                        processed_html = process_html_content(html_content)
+                        
+                        # Mostra il contenuto
+                        st.subheader(f"Contenuto della campagna: {subject}")
+                        
+                        # Tabs per visualizzare HTML originale e processato
+                        tab1, tab2 = st.tabs(["HTML Processato", "HTML Originale"])
+                        
+                        with tab1:
+                            st.code(processed_html, language="html")
+                        
+                        with tab2:
+                            st.code(html_content, language="html")
+                        
+                        # Preview del contenuto
+                        st.subheader("Anteprima")
+                        st.write(subject)
+                        st.markdown("---")
+                        st.markdown(processed_html, unsafe_allow_html=True)
+                        
+                        # Bottone per esportare
+                        if st.button("Esporta a Substack"):
+                            with st.spinner("Esportazione in corso..."):
+                                success = export_to_substack(subject, processed_html, sent_date)
+                                if success:
+                                    st.success("Campagna esportata con successo!")
+                                    # Invalida la cache per ricaricare le campagne
+                                    get_brevo_campaigns.clear()
+                                else:
+                                    st.error("Errore nell'esportazione della campagna")
+                    else:
+                        st.error("Impossibile caricare i dettagli della campagna")
+            else:
+                st.warning("Seleziona una campagna da esportare")
+        
+        # Sezione per esportazione batch
+        st.header("Esportazione Batch")
+        st.info("Per esportare più campagne contemporaneamente, usa lo script batch_migrate.py")
