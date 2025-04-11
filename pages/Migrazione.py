@@ -49,19 +49,36 @@ else:
     st.info("Nessuna newsletter esportata trovata, inizieremo da zero.")
 
 # === Funzione API Brevo ===
+
 def get_sent_campaigns(api_key):
     headers = {"accept": "application/json", "api-key": api_key}
-    params = {"type": "classic", "status": "sent", "limit": 200}
-    url = "https://api.brevo.com/v3/emailCampaigns"
-    r = requests.get(url, headers=headers, params=params)
-    st.code(f"Status code: {r.status_code}")
-    try:
-        data = r.json()
-        st.json(data)  # mostra output API per debug
-        return sorted(data.get("campaigns", []), key=lambda x: x["sentDate"], reverse=True)
-    except Exception as e:
-        st.error(f"Errore parsing risposta API: {e}")
-        return []
+    all_campaigns = []
+    offset = 0
+    limit = 100
+
+    while True:
+        params = {
+            "type": "classic",
+            "status": "sent",
+            "limit": limit,
+            "offset": offset
+        }
+        url = "https://api.brevo.com/v3/emailCampaigns"
+        r = requests.get(url, headers=headers, params=params)
+        st.code(f"Status code: {r.status_code} | Offset: {offset}")
+        try:
+            data = r.json()
+            campaigns = data.get("campaigns", [])
+            if not campaigns:
+                break
+            all_campaigns.extend(campaigns)
+            offset += limit
+        except Exception as e:
+            st.error(f"Errore parsing API: {e}")
+            break
+
+    return sorted(all_campaigns, key=lambda x: x["sentDate"], reverse=True)
+
 
 # === Estrazione newsletter ===
 campaigns = []
