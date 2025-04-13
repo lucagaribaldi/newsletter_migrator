@@ -8,4 +8,5 @@ pymupdf==1.22.5
 beautifulsoup4==4.12.2
 loguru==0.7.0
 pypdf==3.9.0
+# Altre dipendenze esistenti
 typing-extensions>=4.4.0
