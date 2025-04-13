@@ -1,14 +1,11 @@
 streamlit==1.24.0
 pandas==2.0.3
 openai==0.27.8
-dotenv==0.0.5
 python-dotenv==1.0.0
 langchain==0.0.225
 langchain-openai==0.0.2.post1
 pymupdf==1.22.5
 beautifulsoup4==4.12.2
 loguru==0.7.0
-PyMuPDF==1.22.5
 pypdf==3.9.0
-pypdf2==3.0.1
 typing-extensions>=4.4.0
