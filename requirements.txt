@@ -1,6 +1,7 @@
-streamlit==1.27.0
+streamlit==1.26.0
 cloudinary==1.33.0
 requests==2.31.0
+pandas==2.0.3
 beautifulsoup4==4.12.2
 html2text==2020.1.16
 markdown2==2.4.10
