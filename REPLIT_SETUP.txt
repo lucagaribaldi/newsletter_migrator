@@ -1,1 +1,19 @@
-Istruzioni per deploy su Replit con Streamlit...
+# Istruzioni per configurare il progetto su Replit
+
+1. Carica o clona questo repository su Replit
+2. Assicurati che il file .replit e replit.nix siano presenti nella directory principale
+3. Configura le variabili d'ambiente:
+   - Crea una copia del file .env.example e rinominala in .env
+   - Aggiungi la tua OPENAI_API_KEY nel file .env o nelle variabili d'ambiente di Replit
+4. Esegui il progetto cliccando su "Run"
+
+## Risoluzione dei problemi comuni
+
+Se riscontri problemi con le dipendenze:
+1. Verifica che il file requirements.txt contenga tutte le dipendenze necessarie
+2. In particolare, assicurati che ci sia "typing-extensions>=4.4.0"
+3. Se hai problemi con librerie specifiche, prova a installarle manualmente nel Shell:
+   python -m pip install --upgrade nome-libreria
+
+Per eseguire manualmente l'applicazione:
+python -m streamlit run Home.py --server.headless=true --server.enableCORS=false
