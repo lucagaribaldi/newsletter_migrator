@@ -1,3 +1,4 @@
+cat > Home.py << 'EOL'
 import streamlit as st
 import os
 import logging
@@ -28,27 +29,25 @@ st.set_page_config(
 st.write("# Newsletter Migrator 📧")
 
 st.markdown(
-    """
-    Questa applicazione ti aiuta a migrare le tue newsletter da Brevo (precedentemente Sendinblue) a Substack.
-    
-    ### Come funziona:
-    
-    1. Configura le tue API key di Brevo nella sezione "Migrazione"
-    2. Visualizza le tue campagne inviate e seleziona quelle da migrare
-    3. Esporta le campagne selezionate in formato compatibile con Substack
-    
-    ### Istruzioni:
-    
-    - Vai alla pagina "Migrazione" dalla barra laterale
-    - Inserisci la tua API key di Brevo
-    - Seleziona le campagne da migrare
-    - Esporta i contenuti
-    
-    ### Note:
-    
-    - L'app salverà le campagne esportate nella cartella "converted"
-    - Un file JSON terrà traccia di cosa è stato esportato
-    """
+    "Questa applicazione ti aiuta a migrare le tue newsletter da Brevo (precedentemente Sendinblue) a Substack. "
+    "\n\n"
+    "### Come funziona: "
+    "\n\n"
+    "1. Configura le tue API key di Brevo nella sezione \"Migrazione\" "
+    "\n2. Visualizza le tue campagne inviate e seleziona quelle da migrare "
+    "\n3. Esporta le campagne selezionate in formato compatibile con Substack "
+    "\n\n"
+    "### Istruzioni: "
+    "\n\n"
+    "- Vai alla pagina \"Migrazione\" dalla barra laterale "
+    "- Inserisci la tua API key di Brevo "
+    "- Seleziona le campagne da migrare "
+    "- Esporta i contenuti "
+    "\n\n"
+    "### Note: "
+    "\n\n"
+    "- L'app salverà le campagne esportate nella cartella \"converted\" "
+    "- Un file JSON terrà traccia di cosa è stato esportato"
 )
 
 # Informazioni sull'ambiente
@@ -64,8 +63,8 @@ for key, value in env_info.items():
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    """
-    **Newsletter Migrator** è uno strumento open source.
-    
-    Per maggiori informazioni, visita la [repository GitHub](https://github.com/lucagaribaldi/newsletter_migrator).
-    
+    "**Newsletter Migrator** è uno strumento open source. "
+    "\n\n"
+    "Per maggiori informazioni, visita la [repository GitHub](https://github.com/lucagaribaldi/newsletter_migrator)."
+)
+EOL
