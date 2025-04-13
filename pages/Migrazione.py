@@ -26,8 +26,8 @@ st.sidebar.header("Configurazione")
 
 # API Keys
 brevo_api_key = st.sidebar.text_input("Brevo API Key", value=os.getenv("BREVO_API_KEY", ""), type="password")
-brevo_list_id = st.sidebar.text_input("Brevo List ID", value=os.getenv("BREVO_LIST_ID", ""))
-newsletter_name = st.sidebar.text_input("Nome Newsletter", value=os.getenv("NEWSLETTER_NAME", ""))
+brevo_list_id = st.sidebar.text_input("Brevo List ID (opzionale)", value=os.getenv("BREVO_LIST_ID", ""))
+newsletter_name = st.sidebar.text_input("Nome Newsletter (opzionale)", value=os.getenv("NEWSLETTER_NAME", ""))
 
 # Salva le API keys come variabili d'ambiente
 if brevo_api_key:
@@ -47,22 +47,30 @@ def get_brevo_campaigns():
         "api-key": os.getenv("BREVO_API_KEY")
     }
     
-    params = {
-        "status": "sent",
-        "limit": 500,
-        "offset": 0
-    }
-    
     try:
-        response = requests.get(url, headers=headers, params=params)
+        # Prima prova senza parametri o con parametri minimi
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
+        
         campaigns = response.json().get("campaigns", [])
+        logger.info(f"Ottenute {len(campaigns)} campagne")
         
         # Filtra le campagne per nome newsletter se specificato
-        if os.getenv("NEWSLETTER_NAME"):
-            campaigns = [c for c in campaigns if os.getenv("NEWSLETTER_NAME").lower() in c.get("name", "").lower()]
+        if os.getenv("NEWSLETTER_NAME") and os.getenv("NEWSLETTER_NAME").strip():
+            filtered_campaigns = [c for c in campaigns if os.getenv("NEWSLETTER_NAME").lower() in c.get("name", "").lower()]
+            logger.info(f"Filtrate a {len(filtered_campaigns)} campagne con nome '{os.getenv('NEWSLETTER_NAME')}'")
+            return filtered_campaigns
         
         return campaigns
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Errore HTTP nel recupero delle campagne: {e}")
+        st.error(f"Errore HTTP nel recupero delle campagne: {e}")
+        # Mostra il contenuto della risposta per debug
+        if hasattr(e, 'response') and e.response is not None:
+            error_details = f"Dettagli risposta: {e.response.text}"
+            logger.error(error_details)
+            st.error(error_details)
+        return []
     except Exception as e:
         logger.error(f"Errore nel recupero delle campagne: {e}")
         st.error(f"Errore nel recupero delle campagne: {e}")
@@ -81,6 +89,14 @@ def get_campaign_content(campaign_id):
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Errore HTTP nel recupero dei dettagli della campagna {campaign_id}: {e}")
+        st.error(f"Errore HTTP nel recupero dei dettagli della campagna {campaign_id}: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            error_details = f"Dettagli risposta: {e.response.text}"
+            logger.error(error_details)
+            st.error(error_details)
+        return None
     except Exception as e:
         logger.error(f"Errore nel recupero dei dettagli della campagna {campaign_id}: {e}")
         st.error(f"Errore nel recupero dei dettagli della campagna {campaign_id}: {e}")
@@ -97,7 +113,11 @@ def export_to_substack(title, content, date):
         # Carica i post già esportati
         if os.path.exists("exported_posts.json"):
             with open("exported_posts.json", "r") as f:
-                exported_posts = json.load(f)
+                try:
+                    exported_posts = json.load(f)
+                except json.JSONDecodeError:
+                    logger.warning("File exported_posts.json non valido, verrà creato nuovo")
+                    exported_posts = []
         else:
             exported_posts = []
         
